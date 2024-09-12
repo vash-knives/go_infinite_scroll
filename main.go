@@ -75,7 +75,7 @@ var dataVM = []AnObject{
 }
 
 func indexHandler(c echo.Context) error {
-	fmt.Printf("Index page called \n")
+
 	param_page := c.QueryParam("page")
 	page := 1
 	page_count := 5
@@ -91,15 +91,14 @@ func indexHandler(c echo.Context) error {
 		}
 	}
 
+	next_page := page + 1
+
 	if page <= int(total_pages) {
 		listOfObjects, err = getPagedObjects(page, page_count)
+		if err != nil {
+			panic(err)
+		}
 	}
-
-	if err != nil {
-		panic(err)
-	}
-
-	next_page := page + 1
 
 	indexVM := IndexVM{
 		Objects:  listOfObjects,
