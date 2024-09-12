@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 
@@ -32,19 +33,25 @@ func (t *Templates) Render(w io.Writer, name string, data interface{}, c echo.Co
 }
 
 func NewTemplate(htmlFilesPath []string) *Templates {
-	return &Templates{
-		templates: template.Must(template.ParseFiles(htmlFilesPath...)),
-	}
-}
 
-type AnObject struct {
-	Name        string
-	Description string
+	var funcMaps = template.FuncMap{
+		"IsTheLastCard": func(i int, count int) bool {
+			return i+1 == count
+		},
+	}
+	return &Templates{
+		templates: template.Must(template.New("").Funcs(funcMaps).ParseFiles(htmlFilesPath...)),
+	}
 }
 
 type IndexVM struct {
 	Objects  []AnObject
 	NextPage int
+}
+
+type AnObject struct {
+	Name        string
+	Description string
 }
 
 var dataVM = []AnObject{
@@ -67,6 +74,54 @@ var dataVM = []AnObject{
 	{Name: "Object 17", Description: "Object 17 Lorem ipsum dolor sit amet, consectetur adipisicing elit. Voluptatibus quia, nulla! Maiores et perferendis eaque, exercitationem praesentium nihil."},
 }
 
+func indexHandler(c echo.Context) error {
+	fmt.Printf("Index page called \n")
+	param_page := c.QueryParam("page")
+	page := 1
+	page_count := 5
+	total_pages := math.Ceil(float64(len(dataVM)) / float64(page_count))
+	var err error
+	var listOfObjects []AnObject
+
+	if param_page != "" {
+		page, err = strconv.Atoi(param_page)
+		if err != nil {
+			fmt.Printf("Error converint page from query params")
+			page = 1
+		}
+	}
+
+	if page <= int(total_pages) {
+		listOfObjects, err = getPagedObjects(page, page_count)
+	}
+
+	if err != nil {
+		panic(err)
+	}
+
+	next_page := page + 1
+
+	indexVM := IndexVM{
+		Objects:  listOfObjects,
+		NextPage: next_page,
+	}
+
+	templates := []string{"./base.html", "./list.html"}
+	c.Echo().Renderer = NewTemplate(templates)
+
+	htmxRequest := c.Request().Header.Get("HX-Request")
+
+	if len(htmxRequest) > 0 {
+		if page > int(total_pages) {
+			return c.Render(http.StatusOK, "", nil)
+		} else {
+			return c.Render(http.StatusOK, "list", indexVM)
+		}
+	} else {
+		return c.Render(http.StatusOK, "base.html", indexVM)
+	}
+}
+
 func getPagedObjects(page int, max_count int) ([]AnObject, error) {
 	output := []AnObject{}
 
@@ -85,34 +140,4 @@ func getPagedObjects(page int, max_count int) ([]AnObject, error) {
 	output = append(output, dataVM[start_offset:end_offset]...)
 
 	return output, nil
-}
-
-func indexHandler(c echo.Context) error {
-	fmt.Printf("Index page called")
-	param_page := c.QueryParam("page")
-	page := 1
-	var err error
-	if param_page != "" {
-		page, err = strconv.Atoi(param_page)
-		if err != nil {
-			fmt.Printf("Error converint page from query params")
-			page = 1
-		}
-	}
-
-	listOfObjects, err := getPagedObjects(page, 5)
-
-	if err != nil {
-		panic(err)
-	}
-
-	indexVM := IndexVM{
-		Objects:  listOfObjects,
-		NextPage: page + 1,
-	}
-
-	templates := []string{"./base.html", "./list.html"}
-	c.Echo().Renderer = NewTemplate(templates)
-
-	return c.Render(http.StatusOK, "base.html", indexVM)
 }
